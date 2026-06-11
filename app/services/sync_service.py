@@ -64,21 +64,20 @@ async def run_sync(db: Session) -> dict:
 
     for api_m in api_matches:
         try:
-            ext_id: int = api_m["id"]
-            status: str = api_m.get("status", "")
-            api_stage: str = api_m.get("stage", "")
-            our_stage: str = STAGE_MAP.get(api_stage, "")
+            # ── Estructura de API-Football ─────────────────────────────────
+            fixture  = api_m.get("fixture", {})
+            ext_id: int = fixture["id"]
+            status: str = fixture.get("status", {}).get("short", "")
+            api_round: str = api_m.get("league", {}).get("round", "")
+            our_stage: str = STAGE_MAP.get(api_round, "")
 
-            home_info = api_m.get("homeTeam", {})
-            away_info = api_m.get("awayTeam", {})
-            home_tla = (home_info.get("tla") or "").upper()
-            away_tla = (away_info.get("tla") or "").upper()
+            home_info = api_m.get("teams", {}).get("home", {})
+            away_info = api_m.get("teams", {}).get("away", {})
 
             # ── 1. Resolver el partido en nuestra BD ───────────────────────
             db_match: Optional[models.Match] = db_by_ext.get(ext_id)
 
             if not db_match:
-                # Buscar por equipos si ya están definidos
                 team1 = _resolve_team(home_info, teams_by_code, teams_by_name)
                 team2 = _resolve_team(away_info, teams_by_code, teams_by_name)
 
@@ -86,7 +85,6 @@ async def run_sync(db: Session) -> dict:
                     db_match = db_by_teams.get((team1.id, team2.id))
 
                 if not db_match and our_stage and our_stage != "GROUP":
-                    # Knockout sin equipos aún: tomar el primero libre de esa etapa
                     slots = db_knockout_empty.get(our_stage, [])
                     if slots:
                         db_match = slots.pop(0)
@@ -105,7 +103,7 @@ async def run_sync(db: Session) -> dict:
                 continue
 
             # ── 2. Actualizar horario y sede ───────────────────────────────
-            utc_date = api_m.get("utcDate")
+            utc_date = fixture.get("date")
             if utc_date:
                 try:
                     new_dt = datetime.fromisoformat(utc_date.replace("Z", "+00:00")).replace(tzinfo=None)
@@ -115,12 +113,12 @@ async def run_sync(db: Session) -> dict:
                 except ValueError:
                     pass
 
-            venue_info = api_m.get("venue") or ""
-            area_info = (api_m.get("area") or {}).get("name") or ""
+            venue_info = (fixture.get("venue") or {}).get("name") or ""
+            city_info  = (fixture.get("venue") or {}).get("city") or ""
             if venue_info and db_match.venue != venue_info:
                 db_match.venue = venue_info
-            if area_info and db_match.city != area_info:
-                db_match.city = area_info
+            if city_info and db_match.city != city_info:
+                db_match.city = city_info
 
             # ── 3. Asignar equipos en eliminatorias cuando ya se conocen ──
             if our_stage and our_stage != "GROUP":
@@ -140,10 +138,10 @@ async def run_sync(db: Session) -> dict:
 
             # ── 4. Actualizar marcador si el partido terminó ───────────────
             if status in FINISHED_STATUSES:
+                goals = api_m.get("goals", {})
                 score = api_m.get("score", {})
-                ft = score.get("fullTime", {})
-                home_score = ft.get("home")
-                away_score = ft.get("away")
+                home_score = goals.get("home")
+                away_score = goals.get("away")
 
                 if home_score is None or away_score is None:
                     db.commit()
@@ -158,8 +156,8 @@ async def run_sync(db: Session) -> dict:
                     db_match.team1_score = home_score
                     db_match.team2_score = away_score
                     db_match.is_finished = True
-                    db_match.went_to_extra_time = score.get("extraTime", {}).get("home") is not None
-                    db_match.went_to_penalties = score.get("penalties", {}).get("home") is not None
+                    db_match.went_to_extra_time = score.get("extratime", {}).get("home") is not None
+                    db_match.went_to_penalties  = score.get("penalty", {}).get("home") is not None
 
                     if home_score > away_score:
                         db_match.winner_id = db_match.team1_id
@@ -194,9 +192,10 @@ def _resolve_team(
     by_code: dict,
     by_name: dict,
 ) -> Optional[models.Team]:
-    tla = (info.get("tla") or "").upper()
-    if tla and tla in by_code:
-        return by_code[tla]
+    # API-Football usa "code" (3 letras) y "name"
+    code = (info.get("code") or info.get("tla") or "").upper()
+    if code and code in by_code:
+        return by_code[code]
     name = (info.get("name") or "").lower()
     return by_name.get(name)
 
