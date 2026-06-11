@@ -98,6 +98,11 @@ async def run_sync(db: Session) -> dict:
             if db_match.external_id != ext_id:
                 db_match.external_id = ext_id
                 db_by_ext[ext_id] = db_match
+                db.commit()
+
+            # Partido ya cerrado: no tocar nada más
+            if db_match.is_finished and db_match.points_calculated:
+                continue
 
             # ── 2. Actualizar horario y sede ───────────────────────────────
             utc_date = api_m.get("utcDate")
