@@ -20,3 +20,5 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: FOOTBALL_API_KEY
+        sync: false          # API key de football-data.org (gratis en api.football-data.org)

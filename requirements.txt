@@ -8,3 +8,5 @@ python-multipart==0.0.20
 pydantic==2.13.4
 psycopg2-binary==2.9.10
 alembic==1.13.3
+httpx==0.28.1
+apscheduler==3.10.4

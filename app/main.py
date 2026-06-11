@@ -16,9 +16,10 @@ if os.getenv("ENVIRONMENT") != "production":
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .database import engine, Base, SessionLocal
 from . import models
-from .routers import auth, groups, matches, predictions, admin
+from .routers import auth, groups, matches, predictions, admin, sync
 from .auth import hash_password
 from .data.wc2026 import seed_wc2026
 
@@ -43,10 +44,13 @@ app.include_router(groups.router)
 app.include_router(matches.router)
 app.include_router(predictions.router)
 app.include_router(admin.router)
+app.include_router(sync.router)
+
+_scheduler = AsyncIOScheduler()
 
 
 @app.on_event("startup")
-def startup():
+def startup_db():
     db = SessionLocal()
     try:
         seed_wc2026(db)
@@ -69,6 +73,32 @@ def startup():
             print(f"✅ Admin creado: {admin_username}")
     finally:
         db.close()
+
+
+@app.on_event("startup")
+async def startup_scheduler():
+    if not os.getenv("FOOTBALL_API_KEY"):
+        print("⚠️  FOOTBALL_API_KEY no configurada — scheduler desactivado")
+        return
+
+    from .services.sync_service import run_sync_standalone
+
+    # Sincroniza cada 5 minutos mientras el servidor está activo
+    _scheduler.add_job(
+        run_sync_standalone,
+        "interval",
+        minutes=5,
+        id="wc_sync",
+        replace_existing=True,
+    )
+    _scheduler.start()
+    print("✅ Scheduler activado — sincronización cada 5 min")
+
+
+@app.on_event("shutdown")
+async def shutdown_scheduler():
+    if _scheduler.running:
+        _scheduler.shutdown(wait=False)
 
 
 @app.get("/")
