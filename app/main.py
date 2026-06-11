@@ -83,16 +83,17 @@ async def startup_scheduler():
 
     from .services.sync_service import run_sync_standalone
 
-    # Sincroniza cada 5 minutos mientras el servidor está activo
+    # Sincronización diaria a las 6:00 AM UTC
     _scheduler.add_job(
         run_sync_standalone,
-        "interval",
-        minutes=5,
-        id="wc_sync",
+        "cron",
+        hour=6,
+        minute=0,
+        id="wc_sync_daily",
         replace_existing=True,
     )
     _scheduler.start()
-    print("✅ Scheduler activado — sincronización cada 5 min")
+    print("✅ Scheduler activado — sincronización diaria a las 6:00 AM UTC")
 
 
 @app.on_event("shutdown")

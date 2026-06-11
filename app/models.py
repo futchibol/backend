@@ -79,6 +79,7 @@ class Match(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     match_number = Column(Integer, unique=True)
+    external_id = Column(Integer, nullable=True, unique=True)  # ID de football-data.org
     # String en lugar de SAEnum nativo → compatible con SQLite y PostgreSQL sin problema
     stage = Column(String(20), nullable=False)
     group_letter = Column(String(1), nullable=True)
